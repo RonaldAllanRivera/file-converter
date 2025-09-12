@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# PyInstaller
+#  Usually these files are written by PyInstaller
+#  after building the exe
+build/
+dist/
+*.spec
+exe/
+
+# Logs
+*.log
+
+# IDE/editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App outputs
+output/
+
+# Executables (if ever committed by mistake)
+*.exe
