@@ -1,24 +1,35 @@
-# Multi File Converter (MP4 -> GIF)
+# Multi File Converter (Video & Image)
 
-A lightweight Python Tkinter app to batch-convert MP4 videos to web-optimized GIFs with a configurable output size limit (default 5 MB). Built for faster web loading.
+A lightweight Python Tkinter app to batch-convert video and images:
+- MP4/MOV → GIF with a configurable size cap (default 5 MB)
+- WEBP/ICO → PNG
+Built for speed, small outputs, and simple batch workflows.
 
 Currently implemented:
 - MP4 -> GIF batch conversion
+- MOV -> GIF batch conversion
+- WEBP -> PNG image conversion
+- ICO -> PNG image conversion
 - Multi-file selection and progress display
 - Web-optimized GIF pipeline (palettegen + paletteuse, lanczos scaling, sierra2_4a dithering)
-- Iterative compression to meet a target size (default 5 MB)
+- Fast-first strategy to meet a target size (default 5 MB)
 - Output folder selection and quick open
 
 Planned next:
-- ICO -> PNG converter
+- Additional formats and presets
 
 ## Requirements
 - Python 3.9+
 - Tkinter (ships with most Python installers)
-- FFmpeg installed and available on PATH
-- (Optional) PyInstaller to build a Windows .exe
+- FFmpeg on PATH (only needed for MP4/MOV -> GIF)
+- Pillow (image conversions)
+- Optional: PyInstaller to build a Windows .exe
 
-No Python packages are required beyond the standard library for the app itself.
+Install Python deps:
+```powershell
+python -m pip install -r requirements.txt
+```
+ 
 
 ### Install FFmpeg (Windows)
 1. Download a build from: https://www.gyan.dev/ffmpeg/builds/
@@ -40,11 +51,14 @@ python main.py
 ```
 
 ## Usage
-1. Click "Add MP4 Files" to select one or more `.mp4` files.
-2. Choose an output folder (defaults to `E:\\Sites\\<YYYY-MM-DD>`; it is created on first run).
-3. Set the "Max GIF size (MB)" (defaults to 5.0).
-4. Click "Convert to GIF".
-5. Watch the log and progress. Click "Open" to open the output folder.
+1. Pick a Conversion type from the dropdown (MP4 -> GIF, MOV -> GIF, WEBP -> PNG, ICO -> PNG).
+2. Click "Add Files" to select one or more inputs.
+   - The file dialog only allows the extension for the current type (e.g., `*.webp` when WEBP -> PNG is selected).
+   - Optionally click "Add Folder" to import all matching files from a folder (recursively) according to the selected type.
+3. Choose an output folder (defaults to `E:\\Sites\\<YYYY-MM-DD>`; it is created on first run).
+4. If using MP4/MOV -> GIF, set the "Max GIF size (MB)" (defaults to 5.0).
+5. Click "Convert" (label changes depending on the type).
+6. Watch the log and progress. Click "Open" to open the output folder.
 
 
 
@@ -74,8 +88,8 @@ If the cap cannot be reached even at the lowest settings, the smallest produced 
 - If the UI freezes, ensure you have not forcibly closed the window while a conversion is ongoing; the app runs conversions in a background thread to keep the UI responsive.
 
 ## Project Structure
-- `main.py`: Tkinter GUI with batch controls and logging
-- `converter.py`: MP4 → GIF conversion logic using FFmpeg
+- `main.py`: Tkinter GUI with batch controls, mode selector, and logging
+- `converter.py`: Converters for MP4 → GIF (FFmpeg) and WEBP/ICO → PNG
 - Default destination: `E:\\Sites\\<YYYY-MM-DD>` (created on first run)
 
 ---
@@ -109,7 +123,7 @@ Notes:
 python -m venv .venv
 . .\\.venv\\Scripts\\Activate
 
-# 2) Install requirements (none needed for app, but keep consistent)
+# 2) Install requirements
 python -m pip install -r requirements.txt
 
 # 3) Install FFmpeg (winget example)

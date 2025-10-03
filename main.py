@@ -6,10 +6,15 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-from converter import convert_mp4_to_gif, check_ffmpeg_available
+from converter import (
+    convert_mp4_to_gif,
+    check_ffmpeg_available,
+    convert_webp_to_png,
+    convert_ico_to_png,
+)
 
 
-APP_TITLE = "Multi File Converter - MP4 to GIF"
+APP_TITLE = "Multi File Converter"
 DEFAULT_SIZE_MB = 5.0
 
 
@@ -44,6 +49,11 @@ class App(tk.Tk):
                 "2) Extract and add the 'bin' folder to your System PATH.\n"
                 "3) Restart your terminal/IDE."
             )
+        # Log environment info (no SVG dependencies required)
+        try:
+            self.log(f"Python: {sys.version.split()[0]} @ {sys.executable}")
+        except Exception:
+            pass
 
     def _build_ui(self):
         # Top controls frame
@@ -54,7 +64,7 @@ class App(tk.Tk):
         file_controls = ttk.LabelFrame(top, text="Files", padding=10)
         file_controls.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
 
-        btn_add = ttk.Button(file_controls, text="Add MP4 Files", command=self.add_files)
+        btn_add = ttk.Button(file_controls, text="Add Files", command=self.add_files)
         btn_add.grid(row=0, column=0, sticky="w")
 
         btn_remove = ttk.Button(file_controls, text="Remove Selected", command=self.remove_selected)
@@ -63,25 +73,41 @@ class App(tk.Tk):
         btn_clear = ttk.Button(file_controls, text="Clear List", command=self.clear_list)
         btn_clear.grid(row=0, column=2, sticky="w")
 
+        btn_add_folder = ttk.Button(file_controls, text="Add Folder", command=self.add_folder)
+        btn_add_folder.grid(row=0, column=3, padx=5, sticky="w")
+
         # Output controls
         out_controls = ttk.LabelFrame(top, text="Output", padding=10)
         out_controls.pack(side=tk.RIGHT, fill=tk.Y)
 
-        ttk.Label(out_controls, text="Output folder:").grid(row=0, column=0, sticky="w")
+        # Conversion type selector
+        ttk.Label(out_controls, text="Conversion type:").grid(row=0, column=0, sticky="w")
+        self.mode_var = tk.StringVar(value="MP4 -> GIF")
+        mode_combo = ttk.Combobox(
+            out_controls,
+            textvariable=self.mode_var,
+            values=["MP4 -> GIF", "MOV -> GIF", "WEBP -> PNG", "ICO -> PNG"],
+            state="readonly",
+            width=20,
+        )
+        mode_combo.grid(row=0, column=1, sticky="w", padx=(5, 0))
+        mode_combo.bind("<<ComboboxSelected>>", lambda e: self.on_mode_change())
+
+        ttk.Label(out_controls, text="Output folder:").grid(row=1, column=0, sticky="w")
         self.output_var = tk.StringVar(value=self.output_dir)
         out_entry = ttk.Entry(out_controls, textvariable=self.output_var, width=45)
-        out_entry.grid(row=1, column=0, pady=2)
-        ttk.Button(out_controls, text="Browse", command=self.choose_output_dir).grid(row=1, column=1, padx=5)
-        ttk.Button(out_controls, text="Open", command=self.open_output_dir).grid(row=1, column=2)
+        out_entry.grid(row=2, column=0, pady=2)
+        ttk.Button(out_controls, text="Browse", command=self.choose_output_dir).grid(row=2, column=1, padx=5)
+        ttk.Button(out_controls, text="Open", command=self.open_output_dir).grid(row=2, column=2)
 
-        ttk.Label(out_controls, text="Max GIF size (MB):").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(out_controls, text="Max GIF size (MB):").grid(row=3, column=0, sticky="w", pady=(8, 0))
         self.size_var = tk.StringVar(value=str(DEFAULT_SIZE_MB))
-        size_entry = ttk.Entry(out_controls, textvariable=self.size_var, width=10)
-        size_entry.grid(row=3, column=0, sticky="w")
+        self.size_entry = ttk.Entry(out_controls, textvariable=self.size_var, width=10)
+        self.size_entry.grid(row=4, column=0, sticky="w")
 
         # Extra controls (top-right) for visibility: Convert / Cancel
         top_buttons = ttk.Frame(out_controls)
-        top_buttons.grid(row=4, column=0, columnspan=3, pady=(8, 0), sticky="e")
+        top_buttons.grid(row=5, column=0, columnspan=3, pady=(8, 0), sticky="e")
         top_cancel = ttk.Button(top_buttons, text="Cancel", command=self.cancel_conversion, state=tk.DISABLED)
         top_cancel.pack(side=tk.RIGHT, padx=5)
         top_convert = ttk.Button(top_buttons, text="Convert to GIF", command=self.start_conversion)
@@ -93,7 +119,7 @@ class App(tk.Tk):
         middle = ttk.Frame(self, padding=(10, 0, 10, 0))
         middle.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        files_frame = ttk.LabelFrame(middle, text="Selected MP4 Files", padding=10)
+        files_frame = ttk.LabelFrame(middle, text="Selected Files", padding=10)
         files_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10), pady=5)
 
         self.files_listbox = tk.Listbox(files_frame, selectmode=tk.EXTENDED)
@@ -131,21 +157,84 @@ class App(tk.Tk):
         self.cancel_btns.append(self.cancel_btn)
 
     # File operations
+    def _allowed_exts(self, mode: str):
+        return {
+            "MP4 -> GIF": {".mp4"},
+            "MOV -> GIF": {".mov"},
+            "WEBP -> PNG": {".webp"},
+            "ICO -> PNG": {".ico"},
+        }.get(mode, set())
+
+    def _mode_key(self) -> str:
+        """Return one of: 'mp4', 'mov', 'webp', 'ico' based on current combobox text.
+        This is resilient to minor label text changes.
+        """
+        val = (self.mode_var.get() or "").upper()
+        if "MOV" in val:
+            return "mov"
+        if "WEBP" in val:
+            return "webp"
+        if "ICO" in val:
+            return "ico"
+        return "mp4"
+
     def add_files(self):
+        mode = self.mode_var.get()
+        key = self._mode_key()
+        # Debug log to help user verify the active mode
+        self.log(f"Add Files for mode: {mode}")
+        if key == "mp4":
+            filetypes = [("MP4 files", "*.mp4")]
+        elif key == "mov":
+            filetypes = [("MOV files", "*.mov")]
+        elif key == "webp":
+            filetypes = [("WEBP images", "*.webp")]
+        else:  # ico
+            filetypes = [("ICO files", "*.ico")]
+
         paths = filedialog.askopenfilenames(
-            title="Select MP4 files",
-            filetypes=[("MP4 files", "*.mp4"), ("All files", "*.*")],
+            title="Select files",
+            filetypes=filetypes,
         )
         if not paths:
             return
         added = 0
+        allowed = {f".{key}"} if key in {"mp4", "mov", "webp", "ico"} else self._allowed_exts(mode)
         for p in paths:
-            if p.lower().endswith(".mp4") and p not in self.file_list:
+            ext = os.path.splitext(p.lower())[1]
+            if ext in allowed and p not in self.file_list:
                 self.file_list.append(p)
                 self.files_listbox.insert(tk.END, p)
                 added += 1
         if added:
             self.log(f"Added {added} files.")
+
+    def add_folder(self):
+        """Add all files from a selected folder that match the current mode's extension.
+        Recurses into subfolders.
+        """
+        d = filedialog.askdirectory(title="Select folder containing files")
+        if not d:
+            return
+        mode = self.mode_var.get()
+        allowed = {
+            "MP4 -> GIF": {".mp4"},
+            "MOV -> GIF": {".mov"},
+            "WEBP -> PNG": {".webp"},
+            "ICO -> PNG": {".ico"},
+        }.get(mode, set())
+        added = 0
+        for root, _, files in os.walk(d):
+            for name in files:
+                ext = os.path.splitext(name.lower())[1]
+                if ext in allowed:
+                    p = os.path.join(root, name)
+                    if p not in self.file_list:
+                        self.file_list.append(p)
+                        self.files_listbox.insert(tk.END, p)
+                        added += 1
+        if added:
+            self.log(f"Added {added} files from folder.")
 
     def remove_selected(self):
         sel = list(self.files_listbox.curselection())
@@ -215,25 +304,38 @@ class App(tk.Tk):
             messagebox.showinfo("Busy", "A conversion is already running.")
             return
         if not self.file_list:
-            messagebox.showwarning("No files", "Please add MP4 files to convert.")
+            messagebox.showwarning("No files", "Please add files to convert.")
             return
-        try:
-            max_mb = float(self.size_var.get())
-            if max_mb <= 0:
-                raise ValueError
-        except ValueError:
-            messagebox.showerror("Invalid size", "Please enter a positive number for Max GIF size (MB).")
-            return
+        mode = self.mode_var.get()
+        max_mb = DEFAULT_SIZE_MB
+        if mode in ("MP4 -> GIF", "MOV -> GIF"):
+            try:
+                max_mb = float(self.size_var.get())
+                if max_mb <= 0:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Invalid size", "Please enter a positive number for Max GIF size (MB).")
+                return
 
         self.output_dir = self.output_var.get().strip() or self.output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.progress.configure(maximum=len(self.file_list), value=0)
+        # Only process files matching the current mode in case the user changed modes after selecting
+        allowed = self._allowed_exts(mode)
+        files_to_process = [p for p in self.file_list if os.path.splitext(p.lower())[1] in allowed]
+        skipped = len(self.file_list) - len(files_to_process)
+        if skipped > 0:
+            self.log(f"Skipping {skipped} non-matching file(s) for '{mode}'.")
+        if not files_to_process:
+            messagebox.showwarning("No valid files", f"No files match the selected type: {mode}.")
+            return
+
+        self.progress.configure(maximum=len(files_to_process), value=0)
         self.status_var.set("Starting...")
         self._set_buttons_state(start_state=tk.DISABLED, cancel_state=tk.NORMAL)
         self.cancel_event.clear()
 
-        args = (self.file_list.copy(), self.output_dir, max_mb)
+        args = (files_to_process, self.output_dir, max_mb, mode)
         self.worker_thread = threading.Thread(target=self._run_conversion, args=args, daemon=True)
         self.worker_thread.start()
 
@@ -243,28 +345,47 @@ class App(tk.Tk):
             self.status_var.set("Cancelling...")
             self.log("Cancellation requested. Waiting for current file to finish...")
 
-    def _run_conversion(self, files, out_dir, max_mb):
+    def _run_conversion(self, files, out_dir, max_mb, mode):
         successes = 0
         for idx, src in enumerate(files, start=1):
             if self.cancel_event.is_set():
                 break
             base = os.path.splitext(os.path.basename(src))[0]
-            dst = os.path.join(out_dir, f"{base}.gif")
-            self.log_queue.put(f"Converting: {src} -> {dst}\n")
-            try:
-                convert_mp4_to_gif(
-                    input_path=src,
-                    output_path=dst,
-                    max_size_mb=max_mb,
-                    fast_first=True,
-                    max_attempts=2,
-                    palette_sample_sec=6.0,
-                    logger=self._logger_cb,
-                )
-                self.log_queue.put(f"Done: {dst}\n")
-                successes += 1
-            except Exception as e:
-                self.log_queue.put(f"Error: {e}\n")
+            if mode in ("MP4 -> GIF", "MOV -> GIF"):
+                dst = os.path.join(out_dir, f"{base}.gif")
+                self.log_queue.put(f"Converting: {src} -> {dst}\n")
+                try:
+                    convert_mp4_to_gif(
+                        input_path=src,
+                        output_path=dst,
+                        max_size_mb=max_mb,
+                        fast_first=True,
+                        max_attempts=2,
+                        palette_sample_sec=6.0,
+                        logger=self._logger_cb,
+                    )
+                    self.log_queue.put(f"Done: {dst}\n")
+                    successes += 1
+                except Exception as e:
+                    self.log_queue.put(f"Error: {e}\n")
+            elif mode == "WEBP -> PNG":
+                dst = os.path.join(out_dir, f"{base}.png")
+                self.log_queue.put(f"Converting: {src} -> {dst}\n")
+                try:
+                    convert_webp_to_png(src, dst, logger=self._logger_cb)
+                    self.log_queue.put(f"Done: {dst}\n")
+                    successes += 1
+                except Exception as e:
+                    self.log_queue.put(f"Error: {e}\n")
+            else:  # ICO -> PNG
+                dst = os.path.join(out_dir, f"{base}.png")
+                self.log_queue.put(f"Converting: {src} -> {dst}\n")
+                try:
+                    convert_ico_to_png(src, dst, logger=self._logger_cb)
+                    self.log_queue.put(f"Done: {dst}\n")
+                    successes += 1
+                except Exception as e:
+                    self.log_queue.put(f"Error: {e}\n")
 
             # Progress update back on UI thread
             self.after(0, lambda v=idx: self.progress.configure(value=v))
@@ -278,6 +399,27 @@ class App(tk.Tk):
                 self.status_var.set(f"Finished. {successes}/{len(files)} completed")
 
         self.after(0, finalize)
+
+    def on_mode_change(self):
+        mode = self.mode_var.get()
+        # Toggle GIF size inputs
+        if mode in ("MP4 -> GIF", "MOV -> GIF"):
+            try:
+                self.size_entry.configure(state=tk.NORMAL)
+            except Exception:
+                pass
+        else:
+            try:
+                self.size_entry.configure(state=tk.DISABLED)
+            except Exception:
+                pass
+        # Update Convert button labels
+        label = "Convert to GIF" if mode in ("MP4 -> GIF", "MOV -> GIF") else "Convert to PNG"
+        for b in self.start_btns:
+            try:
+                b.configure(text=label)
+            except Exception:
+                pass
 
     def _set_buttons_state(self, start_state, cancel_state):
         # Update all mirrored buttons' states

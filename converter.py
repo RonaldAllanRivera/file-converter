@@ -1,5 +1,4 @@
 import os
-import shutil
 import subprocess
 import tempfile
 from typing import Callable, Optional, Tuple
@@ -22,6 +21,9 @@ def check_ffmpeg_available() -> bool:
         return True
     except FileNotFoundError:
         return False
+
+
+## SVG conversion removed to simplify dependencies on Windows.
 
 
 def _even(value: int) -> int:
@@ -272,3 +274,68 @@ def convert_mp4_to_gif(
         return output_path
 
     raise RuntimeError(last_error or "Failed to encode GIF.")
+
+
+# -----------------------------
+# Image -> PNG Converters
+# -----------------------------
+
+def _ensure_dir(path: str) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+
+
+def convert_webp_to_png(input_path: str, output_path: str, logger: Optional[Callable[[str], None]] = None) -> str:
+    """Convert WEBP to PNG using Pillow.
+    Returns output_path. Raises RuntimeError on failure.
+    """
+    _ensure_dir(output_path)
+    try:
+        from PIL import Image  # lazy import
+    except Exception as e:
+        raise RuntimeError("Pillow is required for WEBP -> PNG. Install with: pip install Pillow") from e
+
+    try:
+        with Image.open(input_path) as im:
+            if im.mode in ("P", "LA", "RGBA"):
+                im = im.convert("RGBA")
+            else:
+                # Preserve colors; convert to RGBA to keep transparency if present
+                im = im.convert("RGBA")
+            im.save(output_path, format="PNG", optimize=True)
+        _log(logger, f"Converted WEBP -> PNG: {output_path}")
+        return output_path
+    except Exception as e:
+        raise RuntimeError(f"Failed WEBP -> PNG: {e}")
+
+
+def convert_ico_to_png(input_path: str, output_path: str, logger: Optional[Callable[[str], None]] = None) -> str:
+    """Convert ICO to PNG using Pillow. Picks the largest icon size available.
+    Returns output_path. Raises RuntimeError on failure.
+    """
+    _ensure_dir(output_path)
+    try:
+        from PIL import Image  # lazy import
+    except Exception as e:
+        raise RuntimeError("Pillow is required for ICO -> PNG. Install with: pip install Pillow") from e
+
+    try:
+        with Image.open(input_path) as im:
+            # If multiple sizes, pick the largest frame
+            best = im
+            try:
+                sizes = getattr(im, "icon_sizes", None)
+                if sizes:
+                    best_size = max(sizes, key=lambda s: (s[0] * s[1]))
+                    best = im.copy()
+                    best.size = best_size  # hint; Pillow picks correct frame on save
+            except Exception:
+                pass
+            best = best.convert("RGBA")
+            best.save(output_path, format="PNG", optimize=True)
+        _log(logger, f"Converted ICO -> PNG: {output_path}")
+        return output_path
+    except Exception as e:
+        raise RuntimeError(f"Failed ICO -> PNG: {e}")
+
+
+## convert_svg_to_png removed.

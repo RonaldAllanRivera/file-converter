@@ -1,1 +1,1 @@
-# No external Python packages required; uses Python standard library and system FFmpeg
+Pillow>=10.0.0
