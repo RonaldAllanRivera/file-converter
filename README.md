@@ -101,8 +101,125 @@ Install PyInstaller and build:
 # Install PyInstaller in your (activated) venv
 python -m pip install pyinstaller
 
-# Build a single-file, windowed executable
+# Build a single-file, windowed executable (no icon)
 py -m PyInstaller --name FileConverter --windowed --onefile main.py
+```
+
+### Build with a custom icon
+1. Place your icon at `assets\\app.ico`. If you have a PNG, you can create an ICO with Pillow:
+   ```powershell
+   # Convert a PNG to multi-size ICO (requires Pillow, already in requirements)
+   python -c "from PIL import Image; Image.open('assets\\app.png').save('assets\\app.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+   ```
+2. Build the .exe with the icon:
+   ```powershell
+   py -m PyInstaller --name FileConverter --windowed --onefile --icon assets\\app.ico main.py
+   ```
+
+#### No icon (use default)
+- If you don't specify `--icon`, PyInstaller embeds its default generic app icon. Use:
+  ```powershell
+  py -m PyInstaller --name FileConverter --windowed --onefile main.py
+  ```
+
+#### Generate a simple icon without uploading assets
+Create a tiny script to produce an ICO (blue background with "FC" text) using Pillow:
+
+1) Save as `tools\\gen_icon.py`:
+```python
+import os
+from PIL import Image, ImageDraw, ImageFont
+
+os.makedirs('assets', exist_ok=True)
+sizes = [16, 32, 48, 64, 128, 256]
+images = []
+for s in sizes:
+    img = Image.new('RGBA', (s, s), '#1D4ED8')  # blue
+    d = ImageDraw.Draw(img)
+    text = 'FC'
+    try:
+        font = ImageFont.truetype('arial.ttf', int(s * 0.5))
+    except Exception:
+        font = ImageFont.load_default()
+    bbox = d.textbbox((0, 0), text, font=font)
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    d.text(((s - w) / 2, (s - h) / 2), text, font=font, fill='white')
+    images.append(img)
+
+images[0].save('assets/app.ico', sizes=[(s, s) for s in sizes])
+print('Wrote assets/app.ico')
+```
+
+2) Run the generator, then build with the new icon:
+```powershell
+python tools\gen_icon.py
+py -m PyInstaller --name FileConverter --windowed --onefile --icon assets\app.ico main.py
+```
+
+#### Troubleshooting: icon not updating
+- **Clean rebuild with icon**
+  ```powershell
+  # From project root
+  Remove-Item -Recurse -Force build, dist -ErrorAction Ignore
+  Remove-Item -Force FileConverter.spec -ErrorAction Ignore
+
+  py -m PyInstaller --clean -y --name FileConverter --windowed --onefile --icon assets\app.ico main.py
+  ```
+
+- **Build under a new name (bypass cache)**
+  ```powershell
+  py -m PyInstaller --clean -y --name FileConverter_Icon --windowed --onefile --icon assets\app.ico main.py
+  ```
+
+- **Refresh Explorer’s icon cache** (if the file still shows the old icon)
+  ```powershell
+  ie4uinit.exe -ClearIconCache
+  taskkill /IM explorer.exe /F
+  Start-Process explorer.exe
+  ```
+
+- **Verify the .ico is valid (not a PNG renamed)**
+  ```powershell
+  # Recreate a proper multi-size ICO from a PNG (if you have one)
+  $code = @'
+  from PIL import Image
+  Image.open("assets/app.png").save("assets/app.ico", sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+  '@
+  $code | python -
+  ```
+
+#### Quick one-liner (no script, no PNG)
+Generate a fresh simple icon directly from Python, then rebuild:
+
+```powershell
+# Create a random-color 'FC' icon and build the exe
+python - <<'PY'
+from PIL import Image, ImageDraw, ImageFont
+import os, random
+os.makedirs('assets', exist_ok=True)
+sizes = [16,32,48,64,128,256]
+bg = random.choice(['#1D4ED8','#047857','#DC2626','#7C3AED','#EA580C','#0EA5E9'])
+imgs = []
+for s in sizes:
+    im = Image.new('RGBA', (s, s), bg)
+    d = ImageDraw.Draw(im)
+    text = 'FC'
+    try:
+        font = ImageFont.truetype('arial.ttf', int(s*0.55))
+    except Exception:
+        font = ImageFont.load_default()
+    try:
+        bbox = d.textbbox((0,0), text, font=font)
+        w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
+    except Exception:
+        w, h = d.textlength(text, font=font), int(s*0.6)
+    d.text(((s-w)/2, (s-h)/2), text, font=font, fill='white')
+    imgs.append(im)
+imgs[0].save('assets/app.ico', sizes=[(s,s) for s in sizes])
+print('Wrote assets/app.ico with bg', bg)
+PY
+
+py -m PyInstaller --name FileConverter --windowed --onefile --icon assets\app.ico main.py
 ```
 
 You will get:
@@ -110,7 +227,6 @@ You will get:
 
 Notes:
 - The .exe expects FFmpeg (`ffmpeg`, `ffprobe`) to be available on PATH.
-- To add an icon (optional), add `--icon path\\to\\app.ico`.
 
 ### Run the .exe
 ```powershell
