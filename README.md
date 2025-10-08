@@ -233,6 +233,26 @@ Notes:
 ./dist/FileConverter.exe
 ```
 
+### Deploy to another PC
+1. **Copy the EXE**
+   - Transfer `dist\FileConverter.exe` (or your renamed build such as `FileConverter_Icon.exe`). No other files are required.
+2. **Install FFmpeg on the target machine**
+   - Quick install (PowerShell):
+     ```powershell
+     winget install --id=Gyan.FFmpeg -e
+     ```
+   - Or download from [https://www.gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/), extract, and add the `bin/` folder (with `ffmpeg.exe` & `ffprobe.exe`) to PATH.
+   - Verify after install:
+     ```powershell
+     ffmpeg -version
+     ffprobe -version
+     ```
+3. **Run the app**
+   - Double-click the EXE or launch from PowerShell.
+   - Expect a Windows SmartScreen warning for unsigned executables; choose “More info” → “Run anyway”.
+
+Python or other Python packages are **not** required on the destination PC because PyInstaller bundles the runtime.
+
 ## Commands quick reference
 ```powershell
 # 1) Create and activate venv
